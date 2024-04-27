@@ -132,8 +132,19 @@ function release(done) {
   done();
 }
 
-router.get('/newMessage', function(req, res, next) {
-  const message = req.query.message; // Retrieve the message from the query parameters
+function cleanPhoneNumber(phone) {
+  // Remove spaces, dashes, parentheses, and any non-digit characters
+  let cleaned = phone.replace(/[^\d]/g, '');
+  // Return the last 10 digits only, assuming they represent the local phone number part
+  return cleaned.slice(-10);
+}
+
+
+router.get('/newUser', function(req, res, next) {
+  const username = req.query.username; // Retrieve the username from the query parameters
+  const rawPhone = req.query.phone; // Retrieve the raw phone number from the query parameters
+  const phone = cleanPhoneNumber(rawPhone); // Clean and format the phone number
+  const password = req.query.password; // Retrieve the password from the query parameters
 
   // Connect to the PostgreSQL database
   pool.connect((err, client, done) => {
@@ -146,10 +157,10 @@ router.get('/newMessage', function(req, res, next) {
         release(done); // Pass done function to the release function
         return console.error('Error beginning transaction', err.stack);
       }
-      // Define the SQL query to insert a new message
-      const queryText = 'INSERT INTO Messages (sender, receiver, message) VALUES ($1, $2, $3)';
-      // Define the values to be inserted, with sender and receiver hardcoded
-      const values = ['Anonymous', 'Deet', message];
+      // Define the SQL query to insert a new user
+      const queryText = 'INSERT INTO users (Username, Phone, Password) VALUES ($1, $2, $3) RETURNING Token';
+      // Define the values to be inserted
+      const values = [username, phone, password];
       // Execute the SQL query
       client.query(queryText, values, (err, result) => {
         if (err) {
@@ -165,10 +176,8 @@ router.get('/newMessage', function(req, res, next) {
             return console.error('Error committing transaction', err.stack);
           }
           console.log('Transaction completed successfully');
-          // Release the client back to the pool
-          release(done); // Pass done function to the release function
-          // Send a response indicating success
-          res.send('Message sent successfully');
+          release(done); // Release the client back to the pool
+          res.send({ message: 'Signup successful', token: result.rows[0].token });
         });
       });
     });
@@ -179,6 +188,124 @@ router.get('/newMessage', function(req, res, next) {
     done(); // Call done function to release the client back to the pool
   }
 });
+
+router.get('/login', function(req, res, next) {
+  const rawPhone = req.query.phone; // Retrieve the raw phone number from the query parameters
+  const phone = cleanPhoneNumber(rawPhone); // Clean and format the phone number
+  const password = req.query.password; // Retrieve the password from the query parameters
+
+  // Connect to the PostgreSQL database
+  pool.connect((err, client, done) => {
+    if (err) {
+      return console.error('Error acquiring client', err.stack);
+    }
+    // Begin a transaction
+    client.query('BEGIN', (err) => {
+      if (err) {
+        release(done); // Pass done function to the release function
+        return console.error('Error beginning transaction', err.stack);
+      }
+      // Define the SQL query to verify a user and get their token
+      const queryText = 'SELECT Token FROM users WHERE Phone = $1 AND Password = $2';
+      // Define the values for the query
+      const values = [phone, password];
+      // Execute the SQL query
+      client.query(queryText, values, (err, result) => {
+        if (err) {
+          client.query('ROLLBACK', () => {
+            release(done); // Pass done function to the release function
+          });
+          return console.error('Error executing query', err.stack);
+        }
+        // Commit the transaction
+        client.query('COMMIT', (err) => {
+          if (err) {
+            release(done); // Pass done function to the release function
+            return console.error('Error committing transaction', err.stack);
+          }
+          release(done); // Release the client back to the pool
+          if (result.rows.length > 0) {
+            // Send the token as part of the response
+            res.send({ message: 'Login successful', token: result.rows[0].token });
+          } else {
+            res.status(401).send('Invalid credentials');
+          }
+        });
+      });
+    });
+  });
+
+  // Function to release the client back to the pool
+  function release(done) {
+    done(); // Call done function to release the client back to the pool
+  }
+});
+
+
+
+
+router.get('/newMessage', function(req, res, next) {
+  const token = req.query.token; // Retrieve the token from the query parameters
+  const message = req.query.message; // Retrieve the message from the query parameters
+
+  // Connect to the PostgreSQL database
+  pool.connect((err, client, done) => {
+    if (err) {
+      return console.error('Error acquiring client', err.stack);
+    }
+    // Begin a transaction
+    client.query('BEGIN', (err) => {
+      if (err) {
+        release(done); // Pass done function to the release function
+        return console.error('Error beginning transaction', err.stack);
+      }
+      // Define the SQL query to find the username associated with the token
+      const userQuery = 'SELECT Username FROM users WHERE Token = $1';
+      // Execute the query to fetch the username
+      client.query(userQuery, [token], (err, userResult) => {
+        if (err || userResult.rows.length === 0) {
+          client.query('ROLLBACK', () => {
+            release(done); // Pass done function to the release function
+            res.status(401).send('Invalid token or user not found');
+          });
+          return;
+        }
+        // Extract the username from the result
+        const username = userResult.rows[0].username;
+        // Define the SQL query to insert a new message
+        const messageQuery = 'INSERT INTO Messages (sender, receiver, message) VALUES ($1, $2, $3)';
+        // Define the values to be inserted, with sender now as the username fetched by the token
+        const messageValues = [username, 'Deet', message];
+        // Execute the SQL query to insert the message
+        client.query(messageQuery, messageValues, (err, messageResult) => {
+          if (err) {
+            client.query('ROLLBACK', () => {
+              release(done); // Pass done function to the release function
+            });
+            return console.error('Error executing query', err.stack);
+          }
+          // Commit the transaction
+          client.query('COMMIT', (err) => {
+            if (err) {
+              release(done); // Pass done function to the release function
+              return console.error('Error committing transaction', err.stack);
+            }
+            console.log('Transaction completed successfully');
+            release(done); // Release the client back to the pool
+            // Send a response indicating success
+            res.send('Message sent successfully');
+          });
+        });
+      });
+    });
+  });
+
+  // Function to release the client back to the pool
+  function release(done) {
+    done(); // Call done function to release the client back to the pool
+  }
+});
+
 
 
 
