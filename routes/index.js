@@ -105,6 +105,55 @@ function release(done) {
   done();
 }
 
+router.get('/newMessage', function(req, res, next) {
+  const message = req.query.message; // Retrieve the message from the query parameters
+
+  // Connect to the PostgreSQL database
+  pool.connect((err, client, done) => {
+    if (err) {
+      return console.error('Error acquiring client', err.stack);
+    }
+    // Begin a transaction
+    client.query('BEGIN', (err) => {
+      if (err) {
+        release(done); // Pass done function to the release function
+        return console.error('Error beginning transaction', err.stack);
+      }
+      // Define the SQL query to insert a new message
+      const queryText = 'INSERT INTO Messages (sender, receiver, message) VALUES ($1, $2, $3)';
+      // Define the values to be inserted, with sender and receiver hardcoded
+      const values = ['Anonymous', 'Deet', message];
+      // Execute the SQL query
+      client.query(queryText, values, (err, result) => {
+        if (err) {
+          client.query('ROLLBACK', () => {
+            release(done); // Pass done function to the release function
+          });
+          return console.error('Error executing query', err.stack);
+        }
+        // Commit the transaction
+        client.query('COMMIT', (err) => {
+          if (err) {
+            release(done); // Pass done function to the release function
+            return console.error('Error committing transaction', err.stack);
+          }
+          console.log('Transaction completed successfully');
+          // Release the client back to the pool
+          release(done); // Pass done function to the release function
+          // Send a response indicating success
+          res.send('Message sent successfully');
+        });
+      });
+    });
+  });
+
+  // Function to release the client back to the pool
+  function release(done) {
+    done(); // Call done function to release the client back to the pool
+  }
+});
+
+
 
 
 router.get('/newInteraction', function(req, res, next) {
