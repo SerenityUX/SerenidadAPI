@@ -101,6 +101,33 @@ router.get('/getNewInteractions', function(req, res, next) {
   });
 });
 
+router.get('/getMessages', function(req, res, next) {
+  // Connect to the PostgreSQL database
+  pool.connect((err, client, done) => {
+      if (err) {
+          console.error('Error acquiring client', err.stack);
+          res.status(500).send('Error acquiring database connection');
+          return;
+      }
+
+      // Define the SQL query to select all messages, sorted by date_created in descending order
+      const selectQuery = 'SELECT * FROM Messages ORDER BY date_created DESC';
+
+      // Execute the select query
+      client.query(selectQuery, (err, result) => {
+          done(); // Release the client back to the pool
+          if (err) {
+              console.error('Error executing select query', err.stack);
+              res.status(500).send('Error fetching messages');
+          } else {
+              console.log('Fetched all messages sorted by date:', result.rows);
+              res.send(result.rows); // Send the records to the client
+          }
+      });
+  });
+});
+
+
 function release(done) {
   done();
 }
