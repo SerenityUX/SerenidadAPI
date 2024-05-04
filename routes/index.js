@@ -101,6 +101,48 @@ router.get('/getNewInteractions', function(req, res, next) {
   });
 });
 
+router.get('/getNewCommands', function(req, res, next) {
+  // Connect to the PostgreSQL database
+  pool.connect((err, client, done) => {
+    if (err) {
+      return console.error('Error acquiring client', err.stack);
+    }
+    // Begin a transaction
+    client.query('BEGIN', async (err) => {
+      if (err) {
+        release(done); // Pass done function to the release function
+        return console.error('Error beginning transaction', err.stack);
+      }
+      // Define the SQL query to select all records where hasBeenSeen is false
+      const selectQuery = 'SELECT * FROM Commands WHERE hasBeenSeen = false';
+      
+      try {
+        // Execute the select query
+        const selectResult = await client.query(selectQuery);
+        console.log('Unseen commands:', selectResult.rows);
+        res.send(selectResult.rows); // Send the records to the client
+
+        // Define the SQL query to update hasBeenSeen to true
+        const updateQuery = 'UPDATE Commands SET hasBeenSeen = true WHERE hasBeenSeen = false';
+        await client.query(updateQuery);
+        
+        // Commit the transaction
+        await client.query('COMMIT');
+        console.log('Updated hasBeenSeen and committed transaction');
+
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error during transaction, rolled back.', err.stack);
+        res.status(500).send('Error processing commands');
+      } finally {
+        // Release the client back to the pool
+        done();
+      }
+    });
+  });
+});
+
+
 router.get('/getMessages', function(req, res, next) {
   // Connect to the PostgreSQL database
   pool.connect((err, client, done) => {
@@ -294,6 +336,70 @@ router.get('/newMessage', function(req, res, next) {
             release(done); // Release the client back to the pool
             // Send a response indicating success
             res.send('Message sent successfully');
+          });
+        });
+      });
+    });
+  });
+
+  // Function to release the client back to the pool
+  function release(done) {
+    done(); // Call done function to release the client back to the pool
+  }
+});
+
+
+router.get('/newCommand', function(req, res, next) {
+  const token = req.query.token; // Retrieve the token from the query parameters
+  const command = req.query.command; // Retrieve the command from the query parameters
+  const params = req.query.params; // Retrieve the params from the query parameters
+
+  // Connect to the PostgreSQL database
+  pool.connect((err, client, done) => {
+    if (err) {
+      return console.error('Error acquiring client', err.stack);
+    }
+    // Begin a transaction
+    client.query('BEGIN', (err) => {
+      if (err) {
+        release(done); // Pass done function to the release function
+        return console.error('Error beginning transaction', err.stack);
+      }
+      // Define the SQL query to find the username associated with the token
+      const userQuery = 'SELECT username FROM users WHERE token = $1';
+      // Execute the query to fetch the username
+      client.query(userQuery, [token], (err, userResult) => {
+        if (err || userResult.rows.length === 0) {
+          client.query('ROLLBACK', () => {
+            release(done); // Pass done function to the release function
+            res.status(401).send('Invalid token or user not found');
+          });
+          return;
+        }
+        // Extract the username from the result
+        const sender = userResult.rows[0].username;
+        // Define the SQL query to insert a new command
+        const commandQuery = 'INSERT INTO Commands (sender, receiver, date_created, params, hasbeenseen) VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4)';
+        // Define the values to be inserted
+        const commandValues = [sender, 'Deet', command + " " + params, false]; // Assuming Deet is the receiver and command hasn't been seen yet
+        // Execute the SQL query to insert the command
+        client.query(commandQuery, commandValues, (err, commandResult) => {
+          if (err) {
+            client.query('ROLLBACK', () => {
+              release(done); // Pass done function to the release function
+            });
+            return console.error('Error executing query', err.stack);
+          }
+          // Commit the transaction
+          client.query('COMMIT', (err) => {
+            if (err) {
+              release(done); // Pass done function to the release function
+              return console.error('Error committing transaction', err.stack);
+            }
+            console.log('Transaction completed successfully');
+            release(done); // Release the client back to the pool
+            // Send a response indicating success
+            res.send('Command sent successfully');
           });
         });
       });
