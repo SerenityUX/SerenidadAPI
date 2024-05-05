@@ -355,7 +355,7 @@ router.get('/newCommand', function(req, res, next) {
   const params = req.query.params; // Retrieve the params from the query parameters
 
   // Define allowed commands
-  const allowedCommands = ['spawn matcha', 'spawn meal', 'spawn shower'];
+  const allowedCommands = ['spawn'];
 
   // Check if the command is allowed
   if (!allowedCommands.includes(command)) {
