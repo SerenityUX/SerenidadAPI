@@ -354,6 +354,19 @@ router.get('/newCommand', function(req, res, next) {
   const command = req.query.command; // Retrieve the command from the query parameters
   const params = req.query.params; // Retrieve the params from the query parameters
 
+  // Define allowed commands
+  const allowedCommands = ['spawn matcha', 'spawn meal', 'spawn shower'];
+
+  // Check if the command is allowed
+  if (!allowedCommands.includes(command)) {
+    return res.status(400).send('Unsupported command');
+  }
+
+  // If the command starts with 'spawn' but the param is invalid
+  if (command.startsWith('spawn') && !isValidSpawnParam(params)) {
+    return res.status(400).send('Invalid spawn parameter');
+  }
+
   // Connect to the PostgreSQL database
   pool.connect((err, client, done) => {
     if (err) {
@@ -410,7 +423,15 @@ router.get('/newCommand', function(req, res, next) {
   function release(done) {
     done(); // Call done function to release the client back to the pool
   }
+
+  // Function to check if the spawn parameter is valid
+  function isValidSpawnParam(param) {
+    // Define valid spawn parameters
+    const validSpawnParams = ['matcha', 'meal', 'shower'];
+    return validSpawnParams.includes(param);
+  }
 });
+
 
 
 
