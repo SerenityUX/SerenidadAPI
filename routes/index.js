@@ -1,6 +1,16 @@
 require('dotenv').config(); // Load environment variables from .env file
 var express = require('express');
 var router = express.Router();
+
+const cors = require('cors');
+
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' }); // Set the destination folder for uploaded files
+
+
+router.use(cors());
+
+
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -141,6 +151,60 @@ router.get('/getNewCommands', function(req, res, next) {
     });
   });
 });
+
+// Route for uploading images
+
+// Use the upload middleware for the '/uploadImage' route
+// router.post('/uploadImage', upload.single('image'), async (req, res) => {
+//   try {
+//     const apiKey = '6d207e02198a847aa98d0a2a901485a5';
+    
+//     console.log(req.file); // This will log information about the uploaded file
+//     res.json({ example: req.file });
+//   } catch (error) {
+//     console.error('Error uploading image:', error);
+//     res.status(500).json({ error: 'Error uploading image' });
+//   }
+// });
+const fs = require('fs').promises; // Import the fs module to read the file
+
+router.post('/uploadImage', upload.single('image'), async (req, res) => {
+  try {
+    const apiKey = '6d207e02198a847aa98d0a2a901485a5';
+    
+    console.log(req.file);
+
+    // Read the file data from the file stored by multer
+    const imageData = await fs.readFile(req.file.path);
+
+    // Encode image data to base64
+    const base64ImageData = imageData.toString('base64');
+
+    // Prepare the API request
+    const apiUrl = 'https://freeimage.host/api/1/upload';
+    const formData = new URLSearchParams();
+    formData.append('key', apiKey);
+    formData.append('action', 'upload');
+    formData.append('source', base64ImageData);
+    formData.append('format', 'json');
+
+    // Make the API call to freeimage.host
+    const apiResponse = await fetch(apiUrl, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    const responseData = await apiResponse.json();
+    res.json({ImageURL: responseData.image.image.url});
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    res.status(500).json({ error: 'Error uploading image' });
+  }
+});
+
 
 
 router.get('/getMessages', function(req, res, next) {
